@@ -39,6 +39,8 @@ def stop_button():
 
 
 async def name_of(chat_id):
+    if chat_id is None:
+        return "belum diatur"
     try:
         e = await client.get_entity(chat_id)
         return getattr(e, "title", None) or str(chat_id)
@@ -48,6 +50,8 @@ async def name_of(chat_id):
 
 def progress_line():
     src, tgt = settings.get_ids()
+    if not src or not tgt:
+        return "Progres: - (sumber/tujuan belum diatur)"
     s = engine.load_state(engine.state_path(src, tgt))
     return f"Progres: blok berikutnya #{s['next_index'] + 1}"
 
@@ -56,8 +60,8 @@ async def status_text():
     src, tgt = settings.get_ids()
     run = "\nStatus: sedang menyalin" if state["running"] else ""
     return ("Telegram Copier\n"
-            f"Sumber : {await name_of(src)} ({src})\n"
-            f"Tujuan : {await name_of(tgt)} ({tgt})\n"
+            f"Sumber : {await name_of(src)}{f' ({src})' if src else ''}\n"
+            f"Tujuan : {await name_of(tgt)}{f' ({tgt})' if tgt else ''}\n"
             f"{progress_line()}{run}")
 
 
@@ -116,6 +120,9 @@ async def source_msg_id(event):
 
 async def handle_pos(event, mode):
     src, tgt = settings.get_ids()
+    if not src or not tgt:
+        await event.reply("Atur sumber dan tujuan dulu lewat menu.", parse_mode=None)
+        return
     number, msg_id = None, None
     if mode == "posnum":
         t = (event.raw_text or "").strip()

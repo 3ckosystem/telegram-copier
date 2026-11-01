@@ -78,6 +78,8 @@ def locate(blocks, msg_id):
 
 async def prepare(max_blocks):
     src, tgt = get_ids()
+    if not src or not tgt:
+        raise ValueError("Sumber atau tujuan belum diatur. Atur dulu lewat menu.")
     path = state_path(src, tgt)
     blocks = await get_blocks()
     s = load_state(path)

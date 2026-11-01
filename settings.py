@@ -20,9 +20,9 @@ def save(d):
 
 def get_ids():
     d = load()
-    src = int(d.get("source_id") or os.environ["SOURCE_CHAT_ID"])
-    tgt = int(d.get("target_id") or os.environ["TARGET_CHAT_ID"])
-    return src, tgt
+    src = d.get("source_id") or os.environ.get("SOURCE_CHAT_ID") or None
+    tgt = d.get("target_id") or os.environ.get("TARGET_CHAT_ID") or None
+    return (int(src) if src else None), (int(tgt) if tgt else None)
 
 
 def template_path():
