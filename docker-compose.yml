@@ -1,0 +1,16 @@
+services:
+  copier:
+    build: .
+    container_name: telegram-copier
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SESSION_DIR: /app/data/sessions
+      TEMPLATE_PATH: /app/data/template.txt
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
