@@ -2,7 +2,7 @@ import copy
 import re
 from telethon.extensions import markdown
 from telethon.helpers import add_surrogate, del_surrogate
-from telethon.tl.types import MessageEntityCustomEmoji
+from telethon.tl.types import MessageEntityCustomEmoji, MessageEntityBlockquote
 
 TOKEN = re.compile("\ufff0(\\d+)\ufff1(.*?)\ufff2", re.S)
 
@@ -80,3 +80,14 @@ class Mode:
 
 
 MODE = Mode()
+
+
+class QuoteMode(Mode):
+    @staticmethod
+    def parse(text):
+        plain, ents = Mode.parse(text)
+        n = len(add_surrogate(plain))
+        return plain, [MessageEntityBlockquote(0, n)] + list(ents)
+
+
+QUOTE = QuoteMode()

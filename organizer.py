@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.tl.types import MessageService, MessageMediaPhoto, MessageMediaDocument
@@ -37,9 +38,19 @@ def is_media(m):
     return is_visual(m) or m.document is not None
 
 
-async def build_blocks():
+async def build_blocks(progress=None):
     items, cur, last_g = [], None, None
+    total = 0
+    if progress:
+        try:
+            total = (await client.get_messages(get_ids()[0], limit=0)).total
+        except Exception:
+            total = 0
+    scanned = 0
     async for m in client.iter_messages(get_ids()[0], reverse=True):
+        scanned += 1
+        if progress and scanned % 150 == 0:
+            await progress(kind="scan", scanned=scanned, total=total)
         if isinstance(m, MessageService):
             continue
         text = richtext.msg_markdown(m).strip()
@@ -85,6 +96,25 @@ def album_sizes(n):
     return [MAX_ALBUM] * (k - 2) + [a, rest - a]
 
 
+ARCHIVE_EXT = (".zip", ".rar", ".7z", ".tar", ".tgz", ".tar.gz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz",
+               ".gz", ".bz2", ".xz")
+ARCHIVE_MIME = {"application/zip", "application/x-zip-compressed", "application/x-rar-compressed",
+                "application/vnd.rar", "application/x-7z-compressed", "application/x-tar",
+                "application/gzip", "application/x-gzip", "application/x-bzip2", "application/x-xz"}
+MULTIPART = re.compile(r"(\.part\d+\.rar|\.7z\.\d{3}|\.zip\.\d{3}|\.z\d{2}|\.r\d{2})$")
+
+
+def is_archive(m):
+    f = m.file
+    if not f or not isinstance(m.media, MessageMediaDocument):
+        return False
+    mime = (f.mime_type or "").lower()
+    name = (f.name or "").lower()
+    if MULTIPART.search(name):
+        return False
+    return mime in ARCHIVE_MIME or name.endswith(ARCHIVE_EXT)
+
+
 def split_albums(media):
     out, run, cat = [], [], None
 
@@ -95,6 +125,13 @@ def split_albums(media):
             pos += size
 
     for m in media:
+        if is_archive(m):
+            if run:
+                flush()
+                run = []
+            out.append([m])
+            cat = None
+            continue
         c = is_visual(m)
         if run and c != cat:
             flush()
