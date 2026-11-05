@@ -79,3 +79,6 @@ Folder `data/` berisi session, progres, pengaturan, dan daftar sumber. Cadangkan
 - `database is locked`: ada proses lain memakai session; hentikan yang lain.
 - FloodWait pada edit pesan: Telegram membatasi edit oleh bot; bot otomatis memakai pesan baru (lihat `/limit`).
 - Arsip dilewati karena batas ukuran: naikkan `ZIP_MAX_MB` di `.env`, lalu `docker compose up -d --force-recreate`.
+
+## Template default
+Blok tanpa judul atau caption memakai `template_default.txt` (atur lewat bot: Template, lalu Template default). Boleh memuat `{zip}`.

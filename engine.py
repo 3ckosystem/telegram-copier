@@ -10,7 +10,7 @@ import richtext
 import sources
 from telethon import errors
 from organizer import client, build_blocks, split_albums, needs_convert, is_archive, album_sizes
-from settings import get_ids, template_path
+from settings import get_ids, template_path, load_default_template
 
 CAPTION_LIMIT = 2048
 _cache = {"src": None, "t": 0.0, "blocks": None}
@@ -34,6 +34,16 @@ def save_state(path, s):
     with open(tmp, "w") as f:
         json.dump(s, f)
     os.replace(tmp, path)
+
+
+def render_default(zips=None):
+    tpl = load_default_template()
+    z = ", ".join(zips) if zips else ""
+    if tpl is None:
+        return render("", zips)
+    if "{zip}" in tpl:
+        return tpl.replace("{zip}", z)
+    return (z + "\n" + tpl) if z else tpl
 
 
 def render(title, zips=None):
@@ -529,7 +539,7 @@ async def execute(plan, ask_text, notify, should_stop, ask_password=None, progre
                 continue
             await client.send_message(tgt, render(b["title"]), parse_mode=richtext.QUOTE)
         zips = [m.file.name for m in b["media"] if is_archive(m) and m.file and m.file.name]
-        cap = render(b["title"], zips) if (b["title"] or zips) else ""
+        cap = render(b["title"], zips) if b["title"] else render_default(zips)
         for ai in range(start, len(albums)):
             if should_stop():
                 await notify(f"Dihentikan di blok {idx + 1}. Progres tersimpan.")

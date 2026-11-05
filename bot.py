@@ -581,6 +581,12 @@ async def main():
         if mode in ("poslink", "posnum"):
             await handle_pos(event, mode)
             return
+        if mode == "tpld" and fwd is None:
+            text = richtext.msg_markdown(event.message)
+            state["tpl_d"] = text
+            await event.reply("Pratinjau template default:\n\n" + richtext.strip_tokens(text).replace("{zip}", "nama-arsip.zip"),
+                              buttons=[[Button.inline("✅ Simpan", b"tpd:save"), Button.inline("✖ Batal", b"m:home")]])
+            return
         if mode == "tpl" and fwd is None:
             text = richtext.msg_markdown(event.message)
             if "{judul}" not in text:
@@ -634,7 +640,7 @@ async def main():
         elif data == "m:tpl":
             state["mode"] = None
             await show(event, "Template saat ini:\n\n" + richtext.strip_tokens(read_template()),
-                       [[Button.inline("✏️ Ubah", b"tpl:edit")], [Button.inline("« Kembali", b"m:home")]],
+                       [[Button.inline("✏️ Ubah", b"tpl:edit")], [Button.inline("🧩 Template default (tanpa caption)", b"tpd:view")], [Button.inline("« Kembali", b"m:home")]],
                        parse_mode=None)
         elif data == "tpl:edit":
             state["mode"] = "tpl"
@@ -659,6 +665,24 @@ async def main():
                 await event.answer("Menghentikan sekarang...")
             else:
                 await event.answer("Tidak ada proses yang berjalan.")
+        elif data == "tpd:view":
+            state["mode"] = None
+            cur = richtext.strip_tokens(settings.load_default_template() or "") or "(belum diatur: dipakai template utama tanpa judul)"
+            await show(event, "Template default (untuk blok tanpa caption):\n\n" + cur,
+                       [[Button.inline("✏️ Ubah default", b"tpd:edit")], [Button.inline("« Kembali", b"m:tpl")]],
+                       parse_mode=None)
+        elif data == "tpd:edit":
+            state["mode"] = "tpld"
+            await show(event, "Kirim teks template default. Dipakai untuk blok yang tidak punya judul atau caption. "
+                              "Tidak perlu {judul}. Boleh memuat {zip} untuk nama arsip.",
+                       [[Button.inline("✖ Batal", b"m:home")]], parse_mode=None)
+        elif data == "tpd:save":
+            if not state.get("tpl_d"):
+                await show(event, "Tidak ada template yang menunggu disimpan.", main_menu(), parse_mode=None)
+                return
+            settings.save_default_template(state["tpl_d"])
+            state["tpl_d"], state["mode"] = None, None
+            await show(event, "Template default disimpan.", main_menu(), parse_mode=None)
         elif data.startswith("mv:"):
             return
         elif data == "pw:skip":

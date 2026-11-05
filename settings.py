@@ -37,3 +37,25 @@ def save_template(text):
         os.makedirs(d, exist_ok=True)
     with open(p, "w", encoding="utf-8") as f:
         f.write(text.strip("\n") + "\n")
+
+
+def default_template_path():
+    p = os.environ.get("TEMPLATE_PATH") or "template.txt"
+    return os.path.join(os.path.dirname(p), "template_default.txt")
+
+
+def load_default_template():
+    try:
+        with open(default_template_path(), encoding="utf-8") as f:
+            return f.read().strip("\n") or None
+    except FileNotFoundError:
+        return None
+
+
+def save_default_template(text):
+    p = default_template_path()
+    d = os.path.dirname(p)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(text.strip("\n") + "\n")
