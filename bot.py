@@ -39,6 +39,20 @@ def bar(frac, width=12):
     return "█" * n + "░" * (width - n) + f" {int(frac * 100)}%"
 
 
+def age_text():
+    a = engine.cache_info()
+    if a is None or a < 60:
+        return "Data sumber: baru dibaca"
+    return f"Data sumber: dibaca {int(a // 60)} menit lalu (tekan 🔄 untuk membaca ulang)"
+
+
+def flood_msg(e):
+    until = (datetime.now(timezone.utc) + timedelta(seconds=e.seconds)).astimezone(WIB).strftime("%H:%M")
+    state["flood_last"] = (time.time(), e.seconds)
+    print("[flood-akun] FloodWaitError", e.seconds, "detik", flush=True)
+    return f"⏳ Telegram menahan akun {max(1, e.seconds // 60)} menit (sampai sekitar {until} WIB). Coba lagi setelah itu."
+
+
 def main_menu():
     return [
         [Button.inline("📥 Atur Sumber", b"sl:list"), Button.inline("📤 Atur Tujuan", b"m:tgt")],
@@ -180,6 +194,12 @@ async def handle_pos(event, mode):
 
     try:
         blocks = await engine.get_blocks(scan_prog)
+        if blocks and ((msg_id is not None and msg_id > engine.last_id(blocks))
+                       or (number is not None and number > len(blocks))):
+            blocks = await engine.get_blocks(scan_prog, force=True)
+    except errors.FloodWaitError as e:
+        await wait.edit(flood_msg(e), parse_mode=None)
+        return
     except Exception as e:
         await wait.edit(f"Gagal membaca sumber: {type(e).__name__}: {e}", parse_mode=None)
         return
@@ -385,6 +405,7 @@ async def main():
                 if not mm or "flood wait" not in msg.lower():
                     return
                 secs = int(mm.group(1))
+                print("[flood-akun]", msg, flush=True)
                 state["flood_last"] = (time.time(), secs)
                 if time.time() - state.get("flood_note_t", 0) < 60:
                     return
@@ -683,6 +704,16 @@ async def main():
             settings.save_default_template(state["tpl_d"])
             state["tpl_d"], state["mode"] = None, None
             await show(event, "Template default disimpan.", main_menu(), parse_mode=None)
+        elif data == "rf:go":
+            if state["running"]:
+                await event.answer("Sedang berjalan.", alert=True)
+                return
+            engine.invalidate()
+            state["plan"] = None
+            rows = [[Button.inline("1 blok", b"n:1"), Button.inline("5 blok", b"n:5"), Button.inline("10 blok", b"n:10")],
+                    [Button.inline("25 blok", b"n:25"), Button.inline("50 blok", b"n:50"), Button.inline("Semua sisa", b"n:0")],
+                    [Button.inline("« Kembali", b"m:home")]]
+            await show(event, "Data sumber dibuang. Pilih jumlah blok; sumber akan dibaca ulang.", rows, parse_mode=None)
         elif data.startswith("mv:"):
             return
         elif data == "pw:skip":
@@ -725,6 +756,9 @@ async def main():
             except ValueError as e:
                 await show(event, str(e), main_menu(), parse_mode=None)
                 return
+            except errors.FloodWaitError as e:
+                await show(event, flood_msg(e), main_menu(), parse_mode=None)
+                return
             except Exception as e:
                 await show(event, f"Gagal membaca sumber: {type(e).__name__}: {e}", main_menu(), parse_mode=None)
                 return
@@ -732,8 +766,9 @@ async def main():
             await show(event,
                        f"Akan menyalin blok {plan['i'] + 1}-{plan['end']} dari {len(plan['blocks'])} "
                        f"({plan['n_media']} media).\n"
-                       f"Sumber : {await name_of(plan['src'])}\nTujuan : {await name_of(plan['tgt'])}",
-                       [[Button.inline("▶ Mulai", b"run:go"), Button.inline("✖ Batal", b"m:home")]],
+                       f"Sumber : {await name_of(plan['src'])}\nTujuan : {await name_of(plan['tgt'])}\n{age_text()}",
+                       [[Button.inline("▶ Mulai", b"run:go"), Button.inline("✖ Batal", b"m:home")],
+                        [Button.inline("🔄 Baca ulang sumber", b"rf:go")]],
                        parse_mode=None)
         elif data == "run:go":
             if state["running"] or not state["plan"]:

@@ -13,7 +13,6 @@ from organizer import client, build_blocks, split_albums, needs_convert, is_arch
 from settings import get_ids, template_path, load_default_template
 
 CAPTION_LIMIT = 2048
-_cache = {"src": None, "t": 0.0, "blocks": None}
 
 
 def state_path(src, tgt):
@@ -74,12 +73,38 @@ def advance(path, idx, blocks):
     return s
 
 
-async def get_blocks(progress=None):
+CACHE_TTL = int(os.environ.get("BLOCKS_CACHE_SECONDS", "21600"))
+CACHE_MAX = 3
+_cache = {}
+
+
+def cache_info(src=None):
+    c = _cache.get(src if src is not None else get_ids()[0])
+    return (time.time() - c["t"]) if c else None
+
+
+def invalidate(src=None):
+    if src is None:
+        _cache.clear()
+    else:
+        _cache.pop(src, None)
+
+
+def last_id(blocks):
+    b = blocks[-1]
+    return max([b["key"]] + [m.id for m in b["media"]])
+
+
+async def get_blocks(progress=None, force=False):
     src = get_ids()[0]
-    if _cache["src"] == src and time.time() - _cache["t"] < 600:
-        return _cache["blocks"]
+    c = _cache.get(src)
+    if not force and c and time.time() - c["t"] < CACHE_TTL:
+        return c["blocks"]
     blocks = await build_blocks(progress)
-    _cache.update(src=src, t=time.time(), blocks=blocks)
+    _cache[src] = {"t": time.time(), "blocks": blocks}
+    while len(_cache) > CACHE_MAX:
+        oldest = min(_cache, key=lambda k: _cache[k]["t"])
+        _cache.pop(oldest)
     return blocks
 
 
@@ -93,12 +118,12 @@ def locate(blocks, msg_id):
     return idx
 
 
-async def prepare(max_blocks, progress=None):
+async def prepare(max_blocks, progress=None, force=False):
     src, tgt = get_ids()
     if not src or not tgt:
         raise ValueError("Sumber atau tujuan belum diatur. Atur dulu lewat menu.")
     path = state_path(src, tgt)
-    blocks = await get_blocks(progress)
+    blocks = await get_blocks(progress, force)
     s = load_state(path)
     i = s["next_index"]
     if i >= len(blocks):
