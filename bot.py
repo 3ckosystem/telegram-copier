@@ -419,6 +419,9 @@ async def main():
 
     logging.getLogger("telethon").setLevel(logging.INFO)
     logging.getLogger("telethon").addHandler(_FloodNotifier())
+    _h = logging.StreamHandler()
+    _h.setLevel(logging.WARNING)
+    logging.getLogger("telethon").addHandler(_h)
 
     async def run_job(msg, plan):
         log = []
@@ -573,6 +576,7 @@ async def main():
 
     @bot.on(events.NewMessage(from_users=owner, pattern=r"^/(start|menu|status|batal)\b"))
     async def on_cmd(event):
+        print("[cmd]", (event.raw_text or "")[:30], flush=True)
         state["mode"] = None
         await event.reply(await status_text(), buttons=main_menu(), parse_mode=None)
 
