@@ -410,8 +410,10 @@ async def main():
                 if time.time() - state.get("flood_note_t", 0) < 60:
                     return
                 state["flood_note_t"] = time.time()
+                until = (datetime.now(timezone.utc) + timedelta(seconds=secs)).astimezone(WIB).strftime("%H:%M")
+                dur = f"{secs} detik" if secs < 120 else f"{secs // 60} menit (sampai sekitar {until} WIB)"
                 asyncio.get_event_loop().create_task(
-                    bot.send_message(owner, f"⏳ Telegram menahan akun selama {secs} detik. Proses lanjut otomatis sesudahnya.", parse_mode=None))
+                    bot.send_message(owner, f"⏳ Telegram menahan akun selama {dur}. Proses lanjut otomatis sesudahnya.", parse_mode=None))
             except Exception:
                 pass
 
@@ -610,11 +612,9 @@ async def main():
             return
         if mode == "tpl" and fwd is None:
             text = richtext.msg_markdown(event.message)
-            if "{judul}" not in text:
-                await event.reply("Template harus memuat {judul}. Kirim ulang, atau /batal.", parse_mode=None)
-                return
+            warn = "" if "{judul}" in text else "\n\n⚠ Template ini tidak memuat {judul}, jadi judul asli dari sumber tidak akan ditampilkan."
             state["tpl"] = text
-            await event.reply("Pratinjau:\n\n" + richtext.strip_tokens(text).replace("{judul}", SAMPLE),
+            await event.reply("Pratinjau:\n\n" + richtext.strip_tokens(text).replace("{judul}", SAMPLE) + warn,
                               buttons=[[Button.inline("✅ Simpan", b"tpl:save"),
                                         Button.inline("✖ Batal", b"m:home")]])
             return
@@ -818,6 +818,16 @@ async def main():
         else:
             lines.append("Akun (pengiriman): belum ada penahanan sejak bot menyala.")
         await event.reply("\n".join(lines), parse_mode=None)
+
+    @bot.on(events.NewMessage(from_users=owner, pattern=r"^/tes\b"))
+    async def on_tes(event):
+        try:
+            await client.send_message("me", engine.render("Contoh Judul Dari Sumber", ["contoh.zip"]), parse_mode=richtext.MODE)
+            await client.send_message("me", engine.render_default(["contoh.zip"]), parse_mode=richtext.MODE)
+            await event.reply("Terkirim ke Pesan Tersimpan: (1) template utama, (2) template default. "
+                              "Cek apakah emoji premium tampil di sana.", parse_mode=None)
+        except Exception as e:
+            await event.reply(f"Gagal: {type(e).__name__}: {e}", parse_mode=None)
 
     mover.register(bot, client, owner, state, show, main_menu)
     print("Bot berjalan. Tekan Ctrl+C untuk berhenti.")

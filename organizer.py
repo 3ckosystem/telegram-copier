@@ -8,7 +8,7 @@ load_dotenv()
 SESSION_DIR = os.environ.get("SESSION_DIR", ".")
 os.makedirs(SESSION_DIR, exist_ok=True)
 client = TelegramClient(os.path.join(SESSION_DIR, "copier_session"), int(os.environ["API_ID"]), os.environ["API_HASH"])
-client.flood_sleep_threshold = 600
+client.flood_sleep_threshold = int(os.environ.get("FLOOD_SLEEP_MAX", "3600"))
 import richtext
 from settings import get_ids
 

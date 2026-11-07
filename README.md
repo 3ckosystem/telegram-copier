@@ -82,3 +82,6 @@ Folder `data/` berisi session, progres, pengaturan, dan daftar sumber. Cadangkan
 
 ## Template default
 Blok tanpa judul atau caption memakai `template_default.txt` (atur lewat bot: Template, lalu Template default). Boleh memuat `{zip}`.
+
+## Pengaturan kecepatan
+`ALBUM_DELAY` (detik antar album, default 6) dan `FLOOD_SLEEP_MAX` (batas tunggu otomatis saat Telegram menahan akun, default 3600 detik) bisa diatur di `.env`.

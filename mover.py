@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ import richtext
 from organizer import is_media, split_albums
 
 WIB = ZoneInfo("Asia/Jakarta")
+ALBUM_DELAY = float(os.environ.get("ALBUM_DELAY", "6"))
 DATE_RE = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
 MV = {"step": None, "src": None, "src_name": "", "tgt": None, "tgt_name": "", "start": None,
       "end": None, "units": None, "can_del": False, "task": None, "stop": False, "running": False}
@@ -185,7 +187,7 @@ async def _run_move(client, status_msg, main_menu):
             st["mb"] += sum(_size(x) for x in fresh) / 1048576
             st["i"] += 1
             await refresh(True)
-            await asyncio.sleep(3)
+            await asyncio.sleep(ALBUM_DELAY)
         else:
             log.append("Selesai.")
     except asyncio.CancelledError:

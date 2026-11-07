@@ -13,6 +13,7 @@ from organizer import client, build_blocks, split_albums, needs_convert, is_arch
 from settings import get_ids, template_path, load_default_template
 
 CAPTION_LIMIT = 2048
+ALBUM_DELAY = float(os.environ.get("ALBUM_DELAY", "6"))
 
 
 def state_path(src, tgt):
@@ -512,7 +513,7 @@ async def handle_zip(tgt, msg, caption, ask_password, notify, hint="", skip=0, o
             first = caption if sent == 0 else ""
             await _send_paths(tgt, chunk, first, [first] + [""] * (len(chunk) - 1))
             sent += 1
-            await asyncio.sleep(3)
+            await asyncio.sleep(ALBUM_DELAY)
         return sent
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -605,7 +606,7 @@ async def execute(plan, ask_text, notify, should_stop, ask_password=None, progre
             items_done += len(album)
             bytes_done += sum(_size(m) for m in album)
             await prog(kind="album", i=ai + 1, n=len(albums), items_done=items_done, bytes_done=bytes_done)
-            await asyncio.sleep(3)
+            await asyncio.sleep(ALBUM_DELAY)
         await client.send_file(tgt, sticker)
         await asyncio.sleep(2)
         s = advance(path, idx, blocks)
