@@ -59,3 +59,13 @@ def save_default_template(text):
         os.makedirs(d, exist_ok=True)
     with open(p, "w", encoding="utf-8") as f:
         f.write(text.strip("\n") + "\n")
+
+
+def title_mode():
+    return load().get("title_mode", "caption")
+
+
+def set_title_mode(m):
+    d = load()
+    d["title_mode"] = m
+    save(d)

@@ -1,7 +1,13 @@
 import os
 import re
 from dotenv import load_dotenv
-from telethon import TelegramClient
+from telethon import TelegramClient, errors
+try:
+    from telethon.tl.functions.messages import GetForumTopicsRequest
+    _TOPIC_PARAM = 'peer'
+except ImportError:
+    GetForumTopicsRequest = None
+    _TOPIC_PARAM = None
 from telethon.tl.types import MessageService, MessageMediaPhoto, MessageMediaDocument
 
 load_dotenv()
@@ -141,3 +147,49 @@ def split_albums(media):
     if run:
         flush()
     return out
+
+
+async def list_topics(client_, src):
+    ent = await client_.get_input_entity(src)
+    topics, offset_date, offset_id, offset_topic = {}, 0, 0, 0
+    try:
+        while True:
+            res = await client_(GetForumTopicsRequest(**{_TOPIC_PARAM: ent}, offset_date=offset_date,
+                                                    offset_id=offset_id, offset_topic=offset_topic, limit=100))
+            batch = [t for t in res.topics if getattr(t, "title", None)]
+            if not batch:
+                break
+            for t in batch:
+                topics[t.id] = t
+            if len(batch) < 100:
+                break
+            last = batch[-1]
+            offset_date, offset_id, offset_topic = last.date, last.top_message, last.id
+    except errors.FloodWaitError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Gagal membaca daftar topik ({type(e).__name__}). Sumber mungkin bukan grup dengan topik.")
+    return sorted(topics.values(), key=lambda t: t.id)
+
+
+def _safe_title(s):
+    s = (s or "").replace("`", "'").replace("](", "]\u200b(")
+    for pair in ("**", "__", "~~", "||"):
+        s = s.replace(pair, pair[0] + "\u200b" + pair[1])
+    return s.strip()
+
+
+async def build_blocks_topics(progress=None):
+    src = get_ids()[0]
+    topics = await list_topics(client, src)
+    blocks = []
+    for i, t in enumerate(topics, 1):
+        media = []
+        async for m in client.iter_messages(src, reply_to=t.id, reverse=True):
+            if not isinstance(m, MessageService) and is_media(m):
+                media.append(m)
+        if progress:
+            await progress(kind="scan", scanned=i, total=len(topics))
+        if media:
+            blocks.append({"key": t.id, "title": _safe_title(t.title), "media": media, "after_media": False})
+    return blocks

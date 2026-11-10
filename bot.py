@@ -42,8 +42,8 @@ def bar(frac, width=12):
 def age_text():
     a = engine.cache_info()
     if a is None or a < 60:
-        return "Data sumber: baru dibaca"
-    return f"Data sumber: dibaca {int(a // 60)} menit lalu (tekan 🔄 untuk membaca ulang)"
+        return f"Judul: {mode_name()} | Data sumber: baru dibaca"
+    return f"Judul: {mode_name()} | Data sumber: dibaca {int(a // 60)} menit lalu (tekan 🔄 untuk membaca ulang)"
 
 
 def flood_msg(e):
@@ -51,6 +51,27 @@ def flood_msg(e):
     state["flood_last"] = (time.time(), e.seconds)
     print("[flood-akun] FloodWaitError", e.seconds, "detik", flush=True)
     return f"⏳ Telegram menahan akun {max(1, e.seconds // 60)} menit (sampai sekitar {until} WIB). Coba lagi setelah itu."
+
+
+def count_rows():
+    return [[Button.inline("1 blok", b"n:1"), Button.inline("5 blok", b"n:5"), Button.inline("10 blok", b"n:10")],
+            [Button.inline("25 blok", b"n:25"), Button.inline("50 blok", b"n:50"), Button.inline("Semua sisa", b"n:0")],
+            [Button.inline("« Kembali", b"m:home")]]
+
+
+def mode_name():
+    return "judul topik" if settings.title_mode() == "topic" else "caption pertama"
+
+
+async def topic_ok():
+    src = settings.get_ids()[0]
+    if not src:
+        return False
+    try:
+        ent = await client.get_entity(src)
+        return bool(getattr(ent, "forum", False))
+    except Exception:
+        return False
 
 
 def main_menu():
@@ -738,7 +759,21 @@ async def main():
                     [Button.inline("25 blok", b"n:25"), Button.inline("50 blok", b"n:50"),
                      Button.inline("Semua sisa", b"n:0")],
                     [Button.inline("« Kembali", b"m:home")]]
-            await show(event, "Berapa blok yang disalin sekarang?", rows, parse_mode=None)
+            cur = settings.title_mode()
+            await show(event, "Judul blok diambil dari mana?",
+                       [[Button.inline(("✅ " if cur == "caption" else "") + "Caption pertama", b"tm:cap")],
+                        [Button.inline(("✅ " if cur == "topic" else "") + "Judul topik", b"tm:topic")],
+                        [Button.inline("« Kembali", b"m:home")]], parse_mode=None)
+        elif data in ("tm:cap", "tm:topic"):
+            if state["running"]:
+                await event.answer("Sedang berjalan.", alert=True)
+                return
+            if data == "tm:topic" and not await topic_ok():
+                await show(event, "Sumber ini bukan grup dengan topik (forum). Pilih Caption pertama, atau ganti sumber.",
+                           [[Button.inline("« Kembali", b"m:copy")]], parse_mode=None)
+                return
+            settings.set_title_mode("topic" if data == "tm:topic" else "caption")
+            await show(event, f"Judul: {mode_name()}. Berapa blok yang disalin sekarang?", count_rows(), parse_mode=None)
         elif data.startswith("n:"):
             if state["running"]:
                 await event.answer("Sedang berjalan.", alert=True)

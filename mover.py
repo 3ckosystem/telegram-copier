@@ -111,6 +111,38 @@ async def _can_delete_others(client, src):
         return False
 
 
+async def _send_group(client, tgt, fresh, caption, log):
+    medias = [x.media for x in fresh]
+    caps = [caption] + [""] * (len(medias) - 1)
+    try:
+        if len(medias) == 1:
+            await client.send_file(tgt, medias[0], caption=caption, parse_mode=richtext.MODE)
+        else:
+            await client.send_file(tgt, medias, caption=caps, parse_mode=richtext.MODE)
+        return {x.id for x in fresh}
+    except errors.FloodWaitError:
+        raise
+    except errors.MediaCaptionTooLongError:
+        await client.send_file(tgt, medias[0] if len(medias) == 1 else medias)
+        await client.send_message(tgt, caption, parse_mode=richtext.MODE)
+        return {x.id for x in fresh}
+    except errors.RPCError as e:
+        log.append(f"Album gagal ({type(e).__name__}), dicoba satu per satu.")
+    sent, pending = set(), caption
+    for x in fresh:
+        try:
+            await client.send_file(tgt, x.media, caption=pending, parse_mode=richtext.MODE)
+            sent.add(x.id)
+            pending = ""
+        except errors.FloodWaitError:
+            raise
+        except errors.RPCError as e:
+            log.append(f"Dilewati ({type(e).__name__}): {_link(x.chat_id, x.id)}")
+    if pending:
+        await client.send_message(tgt, pending, parse_mode=richtext.MODE)
+    return sent
+
+
 async def _run_move(client, status_msg, main_menu):
     src, tgt, units, can_del = MV["src"], MV["tgt"], MV["units"], MV["can_del"]
     n_units = len(units)
@@ -163,17 +195,8 @@ async def _run_move(client, status_msg, main_menu):
                 if (x.message or "").strip():
                     caption = richtext.msg_markdown(x).strip()
                     break
-            medias = [x.media for x in fresh]
-            caps = [caption] + [""] * (len(medias) - 1)
-            try:
-                if len(medias) == 1:
-                    await client.send_file(tgt, medias[0], caption=caption, parse_mode=richtext.MODE)
-                else:
-                    await client.send_file(tgt, medias, caption=caps, parse_mode=richtext.MODE)
-            except errors.MediaCaptionTooLongError:
-                await client.send_file(tgt, medias[0] if len(medias) == 1 else medias)
-                await client.send_message(tgt, caption, parse_mode=richtext.MODE)
-            del_ids = [x.id for x in fresh if x.out or (can_del and chat == src)]
+            sent_ids = await _send_group(client, tgt, fresh, caption, log)
+            del_ids = [x.id for x in fresh if x.id in sent_ids and (x.out or (can_del and chat == src))]
             if del_ids:
                 try:
                     await client.delete_messages(chat, del_ids, revoke=True)
@@ -181,8 +204,8 @@ async def _run_move(client, status_msg, main_menu):
                 except Exception as e:
                     log.append(f"Gagal menghapus ({type(e).__name__})")
                     st["nodel"] += len(del_ids)
-            st["nodel"] += len(fresh) - len(del_ids)
-            st["moved"] += len(fresh)
+            st["nodel"] += len(sent_ids) - len(del_ids)
+            st["moved"] += len(sent_ids)
             st["items"] += len(fresh)
             st["mb"] += sum(_size(x) for x in fresh) / 1048576
             st["i"] += 1

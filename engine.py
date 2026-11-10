@@ -9,15 +9,16 @@ import time
 import richtext
 import sources
 from telethon import errors
-from organizer import client, build_blocks, split_albums, needs_convert, is_archive, album_sizes
-from settings import get_ids, template_path, load_default_template
+from organizer import client, build_blocks, build_blocks_topics, split_albums, needs_convert, is_archive, album_sizes
+from settings import get_ids, template_path, load_default_template, title_mode
 
 CAPTION_LIMIT = 2048
 ALBUM_DELAY = float(os.environ.get("ALBUM_DELAY", "6"))
 
 
 def state_path(src, tgt):
-    return f"data/progress_{src}_{tgt}.json"
+    suffix = "_topic" if title_mode() == "topic" else ""
+    return f"data/progress_{src}_{tgt}{suffix}.json"
 
 
 def load_state(path):
@@ -80,7 +81,8 @@ _cache = {}
 
 
 def cache_info(src=None):
-    c = _cache.get(src if src is not None else get_ids()[0])
+    src = src if src is not None else get_ids()[0]
+    c = _cache.get((src, title_mode()))
     return (time.time() - c["t"]) if c else None
 
 
@@ -88,21 +90,22 @@ def invalidate(src=None):
     if src is None:
         _cache.clear()
     else:
-        _cache.pop(src, None)
+        for m in ("caption", "topic"):
+            _cache.pop((src, m), None)
 
 
 def last_id(blocks):
-    b = blocks[-1]
-    return max([b["key"]] + [m.id for m in b["media"]])
+    return max(max([b["key"]] + [m.id for m in b["media"]]) for b in blocks)
 
 
 async def get_blocks(progress=None, force=False):
     src = get_ids()[0]
-    c = _cache.get(src)
+    mode = title_mode()
+    c = _cache.get((src, mode))
     if not force and c and time.time() - c["t"] < CACHE_TTL:
         return c["blocks"]
-    blocks = await build_blocks(progress)
-    _cache[src] = {"t": time.time(), "blocks": blocks}
+    blocks = await (build_blocks_topics(progress) if mode == "topic" else build_blocks(progress))
+    _cache[(src, mode)] = {"t": time.time(), "blocks": blocks}
     while len(_cache) > CACHE_MAX:
         oldest = min(_cache, key=lambda k: _cache[k]["t"])
         _cache.pop(oldest)
@@ -110,6 +113,9 @@ async def get_blocks(progress=None, force=False):
 
 
 def locate(blocks, msg_id):
+    for i, b in enumerate(blocks):
+        if any(m.id == msg_id for m in b["media"]):
+            return i
     idx = 0
     for i, b in enumerate(blocks):
         if b["key"] <= msg_id:
@@ -195,9 +201,9 @@ async def _send(tgt, files, first, caps, force_document):
         await client.send_file(tgt, files, caption=caps, **kw)
 
 
-async def send_album(tgt, msgs, first, caps):
+async def send_album(tgt, msgs, first, caps, notify=None):
     tmpdir = tempfile.mkdtemp(prefix="tgcopy_")
-    files, converted = [], False
+    files, srcs, converted = [], [], False
     try:
         for k, m in enumerate(msgs, 1):
             if CONVERT and needs_convert(m):
@@ -209,14 +215,33 @@ async def send_album(tgt, msgs, first, caps):
                 converted = True
             else:
                 files.append(m.media)
+            srcs.append(m)
         try:
             await _send(tgt, files, first, caps, False)
+            return
         except errors.FloodWaitError:
             raise
-        except errors.RPCError:
-            if not converted:
-                raise
-            await _send(tgt, files, first, caps, True)
+        except errors.RPCError as ex:
+            if notify:
+                await notify(f"Album gagal ({type(ex).__name__}), dicoba satu per satu.")
+        pending = first
+        for f, m in zip(files, srcs):
+            ok = False
+            for as_doc in ((False, True) if isinstance(f, str) else (False,)):
+                try:
+                    await _send(tgt, [f], pending, [pending], as_doc)
+                    ok = True
+                    break
+                except errors.FloodWaitError:
+                    raise
+                except errors.RPCError:
+                    continue
+            if ok:
+                pending = ""
+            elif notify:
+                await notify(f"Dilewati (tidak bisa dikirim): {msg_link(m.chat_id, m.id)}")
+        if pending:
+            await client.send_message(tgt, pending, parse_mode=richtext.MODE)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -600,7 +625,7 @@ async def execute(plan, ask_text, notify, should_stop, ask_password=None, progre
                 if n == 0 and first and zs == 0:
                     await client.send_message(tgt, first, parse_mode=richtext.MODE)
             else:
-                await send_album(tgt, fresh, first, caps)
+                await send_album(tgt, fresh, first, caps, notify)
             s = {"next_index": idx, "albums_done": ai + 1, "next_key": b["key"]}
             save_state(path, s)
             items_done += len(album)
