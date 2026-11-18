@@ -9,6 +9,7 @@ from telethon.tl.types import Chat, Channel, PeerChannel
 from organizer import client, is_media
 import engine
 import mover
+import replacer
 import sources
 import time
 from datetime import datetime, timedelta, timezone
@@ -60,7 +61,7 @@ def count_rows():
 
 
 def mode_name():
-    return "judul topik" if settings.title_mode() == "topic" else "caption pertama"
+    return "topik + caption" if settings.title_mode() == "topic" else "caption pertama"
 
 
 async def topic_ok():
@@ -80,6 +81,7 @@ def main_menu():
         [Button.inline("📝 Template", b"m:tpl"), Button.inline("▶ Mulai Salin", b"m:copy")],
         [Button.inline("📍 Atur Posisi", b"m:pos"), Button.inline("ℹ️ Status", b"m:home")],
         [Button.inline("🚚 Pindahkan media (hapus asal)", b"mv:start")],
+        [Button.inline("✏️ Ganti kata di caption", b"rp:start")],
     ]
 
 
@@ -130,6 +132,7 @@ async def set_chat(kind, gid):
     name = getattr(ent, "title", None) or str(gid)
     if kind == "src":
         sources.register(gid, name)
+        await engine.detect_mode()
     return f"{'Sumber' if kind == 'src' else 'Tujuan'} diset: {name} ({gid})"
 
 
@@ -187,6 +190,7 @@ async def handle_pos(event, mode):
     if not src or not tgt:
         await event.reply("Atur sumber dan tujuan dulu lewat menu.", parse_mode=None)
         return
+    await engine.detect_mode()
     number, msg_id = None, None
     if mode == "posnum":
         t = (event.raw_text or "").strip()
@@ -615,7 +619,7 @@ async def main():
     @bot.on(events.NewMessage(from_users=owner, func=lambda e: not (e.raw_text or "").startswith("/")))
     async def on_msg(event):
         mode = state["mode"]
-        if mode == "mv":
+        if mode in ("mv", "rp"):
             return
         fwd = event.message.fwd_from
         pf = state.get("pw_fut")
@@ -739,7 +743,7 @@ async def main():
                     [Button.inline("25 blok", b"n:25"), Button.inline("50 blok", b"n:50"), Button.inline("Semua sisa", b"n:0")],
                     [Button.inline("« Kembali", b"m:home")]]
             await show(event, "Data sumber dibuang. Pilih jumlah blok; sumber akan dibaca ulang.", rows, parse_mode=None)
-        elif data.startswith("mv:"):
+        elif data.startswith(("mv:", "rp:")):
             return
         elif data == "pw:skip":
             pf = state.get("pw_fut")
@@ -759,11 +763,7 @@ async def main():
                     [Button.inline("25 blok", b"n:25"), Button.inline("50 blok", b"n:50"),
                      Button.inline("Semua sisa", b"n:0")],
                     [Button.inline("« Kembali", b"m:home")]]
-            cur = settings.title_mode()
-            await show(event, "Judul blok diambil dari mana?",
-                       [[Button.inline(("✅ " if cur == "caption" else "") + "Caption pertama", b"tm:cap")],
-                        [Button.inline(("✅ " if cur == "topic" else "") + "Judul topik", b"tm:topic")],
-                        [Button.inline("« Kembali", b"m:home")]], parse_mode=None)
+            await show(event, "Berapa blok yang disalin sekarang?", rows, parse_mode=None)
         elif data in ("tm:cap", "tm:topic"):
             if state["running"]:
                 await event.answer("Sedang berjalan.", alert=True)
@@ -869,6 +869,7 @@ async def main():
             await event.reply(f"Gagal: {type(e).__name__}: {e}", parse_mode=None)
 
     mover.register(bot, client, owner, state, show, main_menu)
+    replacer.register(bot, client, owner, state, show, main_menu)
     print("Bot berjalan. Tekan Ctrl+C untuk berhenti.")
     await bot.run_until_disconnected()
 

@@ -44,7 +44,7 @@ def is_media(m):
     return is_visual(m) or m.document is not None
 
 
-async def build_blocks(progress=None):
+async def _build_blocks_raw(progress=None):
     items, cur, last_g = [], None, None
     total = 0
     if progress:
@@ -179,17 +179,67 @@ def _safe_title(s):
     return s.strip()
 
 
+def _group_messages(msgs, topic):
+    items, cur, last_g = [], None, None
+    for m in msgs:
+        if isinstance(m, MessageService):
+            continue
+        text = richtext.msg_markdown(m).strip()
+        media = is_media(m)
+        g = m.grouped_id
+        if g and cur is not None and last_g == g:
+            if media:
+                cur["media"].append(m)
+            if text and not cur["text"]:
+                cur["text"] = text
+        else:
+            cur = {"id": m.id, "text": text, "media": [m] if media else [], "date": m.date}
+            items.append(cur)
+        last_g = g
+    blocks, b = [], None
+    for k, it in enumerate(items):
+        prev = items[k - 1] if k > 0 else None
+        if it["text"]:
+            b = {"key": it["id"], "title": it["text"], "media": list(it["media"]),
+                 "after_media": bool(prev and prev["media"])}
+            blocks.append(b)
+        elif b is None:
+            if it["media"]:
+                b = {"key": it["id"], "title": None, "media": list(it["media"]), "after_media": False}
+                blocks.append(b)
+        elif (it["media"] and prev and prev["media"]
+              and (it["date"] - prev["date"]).total_seconds() > GAP_SECONDS):
+            b = {"key": it["id"], "title": None, "media": list(it["media"]), "after_media": False}
+            blocks.append(b)
+        else:
+            b["media"].extend(it["media"])
+    for blk in blocks:
+        if blk["media"]:
+            blk["title"] = f"{topic} - {blk['title']}" if blk["title"] else topic
+    return blocks
+
+
 async def build_blocks_topics(progress=None):
     src = get_ids()[0]
     topics = await list_topics(client, src)
     blocks = []
     for i, t in enumerate(topics, 1):
-        media = []
-        async for m in client.iter_messages(src, reply_to=t.id, reverse=True):
-            if not isinstance(m, MessageService) and is_media(m):
-                media.append(m)
+        msgs = [m async for m in client.iter_messages(src, reply_to=t.id, reverse=True)]
+        blocks.extend(merge_trailing(_group_messages(msgs, _safe_title(t.title))))
         if progress:
             await progress(kind="scan", scanned=i, total=len(topics))
-        if media:
-            blocks.append({"key": t.id, "title": _safe_title(t.title), "media": media, "after_media": False})
     return blocks
+
+
+def merge_trailing(blocks):
+    out = []
+    for blk in blocks:
+        if not blk["media"] and blk["title"] and out and out[-1]["media"]:
+            out[-1].setdefault("extra", []).append(blk["title"])
+            continue
+        out.append(blk)
+    return out
+
+
+async def build_blocks(progress=None):
+    return merge_trailing(await _build_blocks_raw(progress))

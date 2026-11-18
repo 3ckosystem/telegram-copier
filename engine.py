@@ -10,7 +10,8 @@ import richtext
 import sources
 from telethon import errors
 from organizer import client, build_blocks, build_blocks_topics, split_albums, needs_convert, is_archive, album_sizes
-from settings import get_ids, template_path, load_default_template, title_mode
+import organizer as _org
+from settings import get_ids, template_path, load_default_template, title_mode, set_title_mode
 
 CAPTION_LIMIT = 2048
 ALBUM_DELAY = float(os.environ.get("ALBUM_DELAY", "6"))
@@ -125,10 +126,25 @@ def locate(blocks, msg_id):
     return idx
 
 
+async def detect_mode(src=None):
+    src = src or get_ids()[0]
+    mode = "caption"
+    if src and _org.GetForumTopicsRequest is not None:
+        try:
+            ent = await client.get_entity(src)
+            if getattr(ent, "forum", False):
+                mode = "topic"
+        except Exception:
+            pass
+    set_title_mode(mode)
+    return mode
+
+
 async def prepare(max_blocks, progress=None, force=False):
     src, tgt = get_ids()
     if not src or not tgt:
         raise ValueError("Sumber atau tujuan belum diatur. Atur dulu lewat menu.")
+    await detect_mode()
     path = state_path(src, tgt)
     blocks = await get_blocks(progress, force)
     s = load_state(path)
@@ -591,6 +607,8 @@ async def execute(plan, ask_text, notify, should_stop, ask_password=None, progre
             await client.send_message(tgt, render(b["title"]), parse_mode=richtext.QUOTE)
         zips = [m.file.name for m in b["media"] if is_archive(m) and m.file and m.file.name]
         cap = render(b["title"], zips) if b["title"] else render_default(zips)
+        for extra in b.get("extra", []):
+            cap = cap + "\n\n" + render(extra)
         for ai in range(start, len(albums)):
             if should_stop():
                 await notify(f"Dihentikan di blok {idx + 1}. Progres tersimpan.")
